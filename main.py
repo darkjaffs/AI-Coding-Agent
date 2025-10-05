@@ -1,11 +1,18 @@
 import os 
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 from google import genai
 import sys
+from google.genai import types # type: ignore
 
 load_dotenv()
 
 api_key = os.environ.get("GEMINI_API_KEY")
+
+user_prompt = sys.argv[1]
+messages = [
+    types.Content(role="user", 
+                  parts=[types.Part(text=user_prompt)]),
+]
 
 client = genai.Client(api_key=api_key)
 

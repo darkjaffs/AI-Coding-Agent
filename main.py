@@ -7,6 +7,7 @@ from functions.get_files_info import schema_get_files_info, get_files_info
 from functions.get_file_content import schema_get_file_content, get_file_content
 from functions.run_python_file import schema_run_python_file, run_python_file
 from functions.write_file import schema_write_file, write_file
+from functions.call_function import call_function
 
 load_dotenv()
 
@@ -60,6 +61,15 @@ print(response.text)
 if response.function_calls:
     for function_call in response.function_calls:
         print(f"Calling function: {function_call.name}({function_call.args})")
+        
+        function_call_result = call_function(function_call)
+        
+        if not (function_call_result.parts and
+                function_call_result.parts[0].function_response and
+                hasattr(function_call_result.parts[0].function_response, 'response')):
+            raise RuntimeError((f"Fatal exception: call_function did not return a valid function_response object for function {function_call.name}"))
+        if '--verbose' in sys.argv:
+            print(f"-> {function_call_result.parts[0].function_response.response}")
 else:
     print("No function calls found in response.")
 

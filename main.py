@@ -4,10 +4,6 @@ from google import genai
 from google.genai import types  # type: ignore
 import sys
 from google.genai import types  # type: ignore
-from functions.get_files_info import schema_get_files_info
-from functions.get_file_content import schema_get_file_content
-from functions.run_python_file import schema_run_python_file
-from functions.write_file import schema_write_file, write_file
 from functions.call_function import call_function, available_functions
 from functions.prompts import system_prompt
 
@@ -44,22 +40,6 @@ def main():
     generate_content_loop(client, messages, verbose)
 
 
-# available_functions = types.Tool(
-#     function_declarations=[
-#         schema_get_files_info,
-#         schema_get_file_content,
-#         schema_run_python_file,
-#         schema_write_file,
-#     ]
-# )
-
-# system_prompt = system_prompt
-# user_prompt = sys.argv[1]
-# messages = [
-#     types.Content(role="user", parts=[types.Part(text=user_prompt)]),
-# ]
-
-
 def generate_content_loop(client, messages, verbose, max_iterations=20):
 
     for iteration in range(max_iterations):
@@ -86,7 +66,7 @@ def generate_content_loop(client, messages, verbose, max_iterations=20):
             if not response.function_calls and response.text:
                 print("\n Final Response:")
                 print(response.text)
-                break 
+                break
 
             function_call_responses = []
 
@@ -117,9 +97,11 @@ def generate_content_loop(client, messages, verbose, max_iterations=20):
                     types.Content(role="user", parts=function_call_responses)
                 )
             elif not response.text:
-                 print("Error: Model did not provide a text response or a valid function call.")
-                 break
-   
+                print(
+                    "Error: Model did not provide a text response or a valid function call."
+                )
+                break
+
         except Exception as e:
             print(f"Error: {e}")
             break

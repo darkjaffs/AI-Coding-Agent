@@ -1,77 +1,135 @@
 import os
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types  # type: ignore
 import sys
 from google.genai import types  # type: ignore
-from functions.get_files_info import schema_get_files_info, get_files_info
-from functions.get_file_content import schema_get_file_content, get_file_content
-from functions.run_python_file import schema_run_python_file, run_python_file
+from functions.get_files_info import schema_get_files_info
+from functions.get_file_content import schema_get_file_content
+from functions.run_python_file import schema_run_python_file
 from functions.write_file import schema_write_file, write_file
-from functions.call_function import call_function
+from functions.call_function import call_function, available_functions
+from functions.prompts import system_prompt
 
-load_dotenv()
 
-api_key = os.environ.get("GEMINI_API_KEY")
+def main():
 
-available_functions = types.Tool(
-    function_declarations=[
-        schema_get_files_info,
-        schema_get_file_content,
-        schema_run_python_file,
-        schema_write_file,
+    load_dotenv()
+
+    verbose = "--verbose" in sys.argv
+    args = []
+
+    for arg in sys.argv[1:]:
+        if not arg.startswith("--"):
+            args.append(arg)
+
+    if not args:
+        print("AI Code Assistant")
+        print('\nUsage: python main.py "your prompt here" [--verbose]')
+        print('Example: python main.py "How do I fix the calculator?"')
+        sys.exit(1)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    user_prompt = user_prompt = " ".join(args)
+
+    if verbose:
+        print(f"User prompt: {user_prompt}\n")
+
+    messages = [
+        types.Content(role="user", parts=[types.Part(text=user_prompt)]),
     ]
-)
 
-system_prompt = (
-    system_prompt
-) = """
-You are a helpful AI coding agent.
+    generate_content_loop(client, messages, verbose)
 
-When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
 
-- List files and directories
-- Read file contents
-- Execute Python files with optional arguments
-- Write or overwrite files
+# available_functions = types.Tool(
+#     function_declarations=[
+#         schema_get_files_info,
+#         schema_get_file_content,
+#         schema_run_python_file,
+#         schema_write_file,
+#     ]
+# )
 
-All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
-"""
+# system_prompt = system_prompt
+# user_prompt = sys.argv[1]
+# messages = [
+#     types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+# ]
 
-user_prompt = sys.argv[1]
-messages = [
-    types.Content(role="user", parts=[types.Part(text=user_prompt)]),
-]
 
-client = genai.Client(api_key=api_key)
+def generate_content_loop(client, messages, verbose, max_iterations=20):
 
-try:
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=messages,
-        config=types.GenerateContentConfig(
-            tools=[available_functions], system_instruction=system_prompt
-        ),
-    )
-except:
-    print("No Input Detected")
-    raise Exception("Code 1")
+    for iteration in range(max_iterations):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-001",
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    tools=[available_functions], system_instruction=system_prompt
+                ),
+            )
 
-print(response.text)
+            messages.append(response.candidates[0].content)
 
-if response.function_calls:
-    for function_call in response.function_calls:
-        print(f"Calling function: {function_call.name}({function_call.args})")
-        
-        function_call_result = call_function(function_call)
-        
-        if not (function_call_result.parts and
-                function_call_result.parts[0].function_response and
-                hasattr(function_call_result.parts[0].function_response, 'response')):
-            raise RuntimeError((f"Fatal exception: call_function did not return a valid function_response object for function {function_call.name}"))
-        if '--verbose' in sys.argv:
-            print(f"-> {function_call_result.parts[0].function_response.response}")
-else:
-    print("No function calls found in response.")
+            if verbose:
+                print("Prompt Tokens: ", response.usage_metadata.prompt_token_count)
+                print(
+                    "Response Tokens: ", response.usage_metadata.candidates_token_count
+                )
 
-print("Prompt Tokens: ", response.usage_metadata.prompt_token_count)
-print("Response Tokens: ", response.usage_metadata.candidates_token_count)
+            for candidate in response.candidates:
+                messages.append(candidate.content)
+
+            if not response.function_calls and response.text:
+                print("\n Final Response:")
+                print(response.text)
+                break 
+
+            function_call_responses = []
+
+            if response.function_calls:
+                for function_call in response.function_calls:
+
+                    print(
+                        f"Calling function: {function_call.name}({function_call.args})"
+                    )
+
+                    function_call_result = call_function(function_call, verbose)
+
+                    if not function_call_result.parts or not hasattr(
+                        function_call_result.parts[0], "function_response"
+                    ):
+                        raise RuntimeError(
+                            f"Fatal exception: call_function for {function_call.name} "
+                            "did not return a valid function_response."
+                        )
+                    if verbose:
+                        print(
+                            f"-> {function_call_result.parts[0].function_response.response}"
+                        )
+                    function_call_responses.append(function_call_result.parts[0])
+
+            if function_call_responses:
+                messages.append(
+                    types.Content(role="user", parts=function_call_responses)
+                )
+            elif not response.text:
+                 print("Error: Model did not provide a text response or a valid function call.")
+                 break
+   
+        except Exception as e:
+            print(f"Error: {e}")
+            break
+
+    else:
+        print(
+            f"Reached maximum iterations ({max_iterations}). Agent may not have completed the task."
+        )
+
+
+if __name__ == "__main__":
+
+    main()

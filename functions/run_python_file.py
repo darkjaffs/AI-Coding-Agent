@@ -24,7 +24,7 @@ def run_python_file(working_directory, file_path, args=[]):
             commands, capture_output=True, text=True, timeout=30, cwd=absdirectory
         )
         output = []
-        
+
         if result.stdout:
             output.append(f"STDOUT:\n {result.stdout}")
         if result.stderr:
